@@ -28,24 +28,51 @@ async def login(page):
     password = os.environ["TISTORY_PASSWORD"]
 
     await page.goto("https://www.tistory.com/auth/login", wait_until="domcontentloaded")
-    await page.wait_for_timeout(2000)
+    await page.wait_for_timeout(3000)
 
-    # Tistory → Kakao 로그인 페이지로 리다이렉트됨
-    # 이메일/아이디로 로그인 옵션이 있으면 클릭
-    try:
-        alt_login = page.locator("a:has-text('이메일'), button:has-text('아이디'), a.link-connect-kakao").first
-        if await alt_login.is_visible(timeout=3000):
-            await alt_login.click()
-            await page.wait_for_timeout(1000)
-    except Exception:
-        pass
+    # 카카오 이메일 로그인 버튼 클릭 시도
+    for sel in [
+        "a:has-text('이메일')", "button:has-text('이메일')",
+        "a:has-text('아이디')", "button:has-text('아이디')",
+        ".btn_login_kakao", "a.link-connect-kakao",
+    ]:
+        try:
+            btn = page.locator(sel).first
+            if await btn.is_visible(timeout=2000):
+                await btn.click()
+                await page.wait_for_timeout(1500)
+                break
+        except Exception:
+            continue
 
-    # Kakao 로그인 폼
-    await page.fill("input#loginKey, input[name='loginKey']", email)
-    await page.fill("input#password, input[name='password']", password)
+    # 이메일 입력 (여러 셀렉터 시도)
+    for sel in [
+        "input#loginKey", "input[name='loginKey']",
+        "input#loginId", "input[name='loginId']",
+        "input[type='email']", "input[autocomplete='username']",
+        "input[placeholder*='이메일']", "input[placeholder*='아이디']",
+    ]:
+        try:
+            el = page.locator(sel).first
+            if await el.is_visible(timeout=2000):
+                await el.fill(email)
+                break
+        except Exception:
+            continue
+
+    # 비밀번호 입력
+    for sel in ["input#password", "input[name='password']", "input[type='password']"]:
+        try:
+            el = page.locator(sel).first
+            if await el.is_visible(timeout=2000):
+                await el.fill(password)
+                break
+        except Exception:
+            continue
+
     await page.click("button[type='submit']")
     await page.wait_for_load_state("networkidle", timeout=20000)
-    print("로그인 완료")
+    print(f"로그인 완료 - URL: {page.url}")
 
 
 async def set_editor_content(page, html_content):
@@ -143,7 +170,7 @@ async def main():
         return
 
     published = load_published()
-    new_entries = [e for e in reversed(feed.entries) if e.get("link", "") not in published]
+    new_entries = [e for e in reversed(feed.entries) if e.get("link", "") not in published][:5]
 
     if not new_entries:
         print("새 글 없음")
