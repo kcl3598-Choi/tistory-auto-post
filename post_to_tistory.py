@@ -23,14 +23,31 @@ def save_published(published):
         json.dump(published, f, ensure_ascii=False, indent=2)
 
 
+async def _click_submit(page):
+    for sel in [
+        "button[type='submit']", "input[type='submit']",
+        "button.btn_g", "button.btn_confirm", "button.submit",
+        "button:has-text('로그인')", "button:has-text('다음')",
+    ]:
+        try:
+            el = page.locator(sel).first
+            if await el.is_visible(timeout=1500):
+                await el.click()
+                return
+        except Exception:
+            continue
+    await page.keyboard.press("Enter")
+
+
 async def login(page):
     email = os.environ["TISTORY_EMAIL"]
     password = os.environ["TISTORY_PASSWORD"]
 
     await page.goto("https://www.tistory.com/auth/login", wait_until="domcontentloaded")
     await page.wait_for_timeout(3000)
+    print(f"[1] URL: {page.url}")
 
-    # 카카오 이메일 로그인 버튼 클릭 시도
+    # 카카오 이메일/아이디 로그인 버튼 클릭 시도
     for sel in [
         "a:has-text('이메일')", "button:has-text('이메일')",
         "a:has-text('아이디')", "button:has-text('아이디')",
@@ -41,38 +58,59 @@ async def login(page):
             if await btn.is_visible(timeout=2000):
                 await btn.click()
                 await page.wait_for_timeout(1500)
+                print(f"[2] 로그인 버튼 클릭 후 URL: {page.url}")
                 break
         except Exception:
             continue
 
-    # 이메일 입력 (여러 셀렉터 시도)
+    # 이메일 입력
+    email_filled = False
     for sel in [
         "input#loginKey", "input[name='loginKey']",
         "input#loginId", "input[name='loginId']",
         "input[type='email']", "input[autocomplete='username']",
         "input[placeholder*='이메일']", "input[placeholder*='아이디']",
+        "input[placeholder*='전화번호']",
     ]:
         try:
             el = page.locator(sel).first
             if await el.is_visible(timeout=2000):
                 await el.fill(email)
+                email_filled = True
+                print(f"[3] 이메일 입력 완료 ({sel})")
                 break
         except Exception:
             continue
 
+    if not email_filled:
+        print(f"[ERROR] 이메일 입력 필드 없음 - URL: {page.url}")
+        return
+
+    # 이메일 입력 후 다음 버튼 (단계별 로그인 처리)
+    await _click_submit(page)
+    await page.wait_for_timeout(2000)
+    print(f"[4] 다음 클릭 후 URL: {page.url}")
+
     # 비밀번호 입력
+    password_filled = False
     for sel in ["input#password", "input[name='password']", "input[type='password']"]:
         try:
             el = page.locator(sel).first
-            if await el.is_visible(timeout=2000):
+            if await el.is_visible(timeout=3000):
                 await el.fill(password)
+                password_filled = True
+                print(f"[5] 비밀번호 입력 완료 ({sel})")
                 break
         except Exception:
             continue
 
-    await page.click("button[type='submit']")
+    if not password_filled:
+        print(f"[ERROR] 비밀번호 입력 필드 없음 - URL: {page.url}")
+        return
+
+    await _click_submit(page)
     await page.wait_for_load_state("networkidle", timeout=20000)
-    print(f"로그인 완료 - URL: {page.url}")
+    print(f"[6] 로그인 완료 - URL: {page.url}")
 
 
 async def set_editor_content(page, html_content):
