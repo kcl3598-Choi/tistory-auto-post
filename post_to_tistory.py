@@ -112,43 +112,55 @@ async def login(page):
         raise Exception(f"비밀번호 입력 필드 없음 - URL: {page.url}")
 
     await _click_submit(page)
-    await page.wait_for_load_state("networkidle", timeout=20000)
+    # Tistory로 리다이렉트 완료될 때까지 대기
+    try:
+        await page.wait_for_url("**/tistory.com/**", timeout=15000)
+    except Exception:
+        pass
+    await page.wait_for_load_state("networkidle", timeout=10000)
     print(f"[6] 로그인 완료 - URL: {page.url}")
+    if "tistory.com" not in page.url:
+        raise Exception(f"로그인 실패 (Tistory 리다이렉트 안됨) - URL: {page.url}")
 
 
 async def set_editor_content(page, html_content):
-    # 방법 1: HTML 모드 버튼 클릭 후 입력
+    # 방법 1: HTML 모드 버튼 클릭 후 textarea 입력
     for sel in ["button:has-text('HTML')", "[data-mode='html']", ".btn-mode-html", "button[title='HTML']"]:
         try:
             btn = page.locator(sel).first
             if await btn.is_visible(timeout=2000):
                 await btn.click()
                 await page.wait_for_timeout(1000)
-
-                code_area = page.locator(".CodeMirror textarea, textarea.html-source, .html-editor textarea").first
-                if await code_area.is_visible(timeout=2000):
-                    await code_area.click()
-                    await page.keyboard.press("Control+a")
-                    await page.keyboard.type(html_content, delay=0)
-                    print("[OK] HTML 모드 입력")
-                    return
+                for area_sel in [".CodeMirror textarea", "textarea.html-source", ".html-editor textarea", "textarea"]:
+                    code_area = page.locator(area_sel).first
+                    if await code_area.is_visible(timeout=2000):
+                        await code_area.click()
+                        await page.keyboard.press("Control+a")
+                        await page.keyboard.type(html_content, delay=0)
+                        print(f"[OK] HTML 모드 입력 ({area_sel})")
+                        return
         except Exception:
             continue
 
-    # 방법 2: JavaScript로 에디터에 직접 주입
+    # 방법 2: JavaScript로 에디터에 직접 주입 + 이벤트 트리거
     method = await page.evaluate("""(content) => {
         const pm = document.querySelector('.ProseMirror');
         if (pm) {
+            pm.focus();
             pm.innerHTML = content;
-            pm.dispatchEvent(new Event('input', {bubbles: true}));
+            pm.dispatchEvent(new InputEvent('input', {bubbles: true}));
+            pm.dispatchEvent(new Event('change', {bubbles: true}));
             return 'prosemirror';
         }
         const editors = document.querySelectorAll('[contenteditable="true"]');
         for (const el of editors) {
-            if (el.closest('.title-area, .title-wrap')) continue;
+            if (el.closest('.title-area, .title-wrap, #post-title-inp')) continue;
+            if (el.getAttribute('aria-label') && el.getAttribute('aria-label').includes('제목')) continue;
+            el.focus();
             el.innerHTML = content;
-            el.dispatchEvent(new Event('input', {bubbles: true}));
-            return 'contenteditable';
+            el.dispatchEvent(new InputEvent('input', {bubbles: true}));
+            el.dispatchEvent(new Event('change', {bubbles: true}));
+            return 'contenteditable:' + (el.className || el.id || 'unknown');
         }
         return null;
     }""", html_content)
