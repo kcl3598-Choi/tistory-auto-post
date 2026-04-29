@@ -1,4 +1,4 @@
-name: Tistory 자동 포스팅
+name: Tistory 자동 포스팅 
 
 on:
   schedule:
