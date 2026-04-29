@@ -43,7 +43,7 @@ async def login(page):
     email = os.environ["TISTORY_EMAIL"]
     password = os.environ["TISTORY_PASSWORD"]
 
-    await page.goto("https://www.tistory.com/auth/login", wait_until="domcontentloaded")
+    await page.goto("https://www.tistory.com/auth/login", wait_until="networkidle", timeout=30000)
     await page.wait_for_timeout(3000)
     print(f"[1] URL: {page.url}")
 
@@ -83,8 +83,7 @@ async def login(page):
             continue
 
     if not email_filled:
-        print(f"[ERROR] 이메일 입력 필드 없음 - URL: {page.url}")
-        return
+        raise Exception(f"이메일 입력 필드 없음 - URL: {page.url}")
 
     # 이메일 입력 후 다음 버튼 (단계별 로그인 처리)
     await _click_submit(page)
@@ -105,8 +104,7 @@ async def login(page):
             continue
 
     if not password_filled:
-        print(f"[ERROR] 비밀번호 입력 필드 없음 - URL: {page.url}")
-        return
+        raise Exception(f"비밀번호 입력 필드 없음 - URL: {page.url}")
 
     await _click_submit(page)
     await page.wait_for_load_state("networkidle", timeout=20000)
