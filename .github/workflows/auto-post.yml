@@ -1,0 +1,41 @@
+name: Tistory 자동 포스팅
+
+on:
+  schedule:
+    - cron: '0 * * * *'   # 매시간 정각 (UTC 기준)
+  workflow_dispatch:        # 수동 실행 버튼
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: 저장소 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Python 설치
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 의존성 설치
+        run: pip install -r requirements.txt
+
+      - name: Playwright Chromium 설치
+        run: playwright install chromium --with-deps
+
+      - name: 자동 포스팅 실행
+        env:
+          TISTORY_EMAIL: ${{ secrets.TISTORY_EMAIL }}
+          TISTORY_PASSWORD: ${{ secrets.TISTORY_PASSWORD }}
+        run: python post_to_tistory.py
+
+      - name: published.json 커밋
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add published.json
+          git diff --staged --quiet || git commit -m "chore: update published posts [skip ci]"
+          git push
