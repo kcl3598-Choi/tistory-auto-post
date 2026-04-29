@@ -7,7 +7,7 @@ on:
 
 jobs:
   post:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     permissions:
       contents: write
 
@@ -24,9 +24,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Playwright Chromium 설치
-        run: |
-          sudo apt-get install -y libasound2t64
-          playwright install chromium --with-deps
+        run: playwright install chromium --with-deps
 
       - name: 자동 포스팅 실행
         env:
