@@ -23,8 +23,16 @@ jobs:
       - name: 의존성 설치
         run: pip install -r requirements.txt
 
+      - name: Playwright 의존성 설치
+        run: |
+          sudo apt-get install -y \
+            libnss3 libnspr4 libdbus-1-3 libatk1.0-0 libatk-bridge2.0-0 \
+            libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 \
+            libxfixes3 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 \
+            libasound2t64 libatspi2.0-0 libwayland-client0
+
       - name: Playwright Chromium 설치
-        run: playwright install chromium --with-deps
+        run: playwright install chromium
 
       - name: 자동 포스팅 실행
         env:
