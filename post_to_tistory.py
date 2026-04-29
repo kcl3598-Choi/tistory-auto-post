@@ -45,23 +45,28 @@ async def login(page):
 
     await page.goto("https://www.tistory.com/auth/login", wait_until="networkidle", timeout=30000)
     await page.wait_for_timeout(3000)
-    print(f"[1] URL: {page.url}")
+    print(f"[1] URL: {page.url} | title: {await page.title()}")
 
-    # 카카오 이메일/아이디 로그인 버튼 클릭 시도
+    # 카카오 로그인 버튼 클릭 (Tistory → Kakao 리다이렉트)
     for sel in [
+        "a[href*='kakao']", "button[class*='kakao']",
+        "a:has-text('카카오')", "button:has-text('카카오')",
         "a:has-text('이메일')", "button:has-text('이메일')",
         "a:has-text('아이디')", "button:has-text('아이디')",
         ".btn_login_kakao", "a.link-connect-kakao",
+        ".kakao_login", "[data-social='kakao']",
     ]:
         try:
             btn = page.locator(sel).first
-            if await btn.is_visible(timeout=2000):
+            if await btn.is_visible(timeout=1500):
                 await btn.click()
-                await page.wait_for_timeout(1500)
-                print(f"[2] 로그인 버튼 클릭 후 URL: {page.url}")
+                await page.wait_for_timeout(2000)
+                print(f"[2] 클릭 후 URL: {page.url}")
                 break
         except Exception:
             continue
+    else:
+        print(f"[2] 클릭 가능한 로그인 버튼 없음, 현재 URL: {page.url}")
 
     # 이메일 입력
     email_filled = False
@@ -217,14 +222,22 @@ async def main():
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(
             headless=True,
-            args=["--no-sandbox", "--disable-setuid-sandbox"],
+            args=[
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-blink-features=AutomationControlled",
+            ],
         )
         context = await browser.new_context(
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/124.0.0.0 Safari/537.36"
-            )
+            ),
+            viewport={"width": 1280, "height": 800},
+        )
+        await context.add_init_script(
+            "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
         )
         page = await context.new_page()
 
