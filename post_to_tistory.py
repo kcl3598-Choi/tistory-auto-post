@@ -249,15 +249,20 @@ async def write_post(page, title, html_content):
     print(f"[write] 페이지 요소: {page_info}")
 
     # 제목 입력
+    title_filled = False
     for sel in ["input#post-title-inp", "input.title", "input[placeholder*='제목']", ".title-area input"]:
         try:
             el = page.locator(sel).first
             if await el.is_visible(timeout=2000):
                 await el.click()
                 await el.fill(title)
+                title_filled = True
+                print(f"[write] 제목 입력 완료 ({sel})")
                 break
         except Exception:
             continue
+    if not title_filled:
+        print("[write] 제목 입력 실패")
 
     await page.wait_for_timeout(1000)
 
@@ -266,15 +271,23 @@ async def write_post(page, title, html_content):
     await page.wait_for_timeout(1000)
 
     # 발행 버튼 클릭
+    publish_clicked = False
     for sel in ["button:has-text('완료')", "button:has-text('발행')", ".btn-publish", "button.btn-posting-commit"]:
         try:
             btn = page.locator(sel).first
             if await btn.is_visible(timeout=2000):
                 await btn.click()
+                publish_clicked = True
+                print(f"[write] 발행 버튼 클릭 ({sel})")
                 await page.wait_for_timeout(2000)
                 break
         except Exception:
             continue
+    if not publish_clicked:
+        print("[write] 발행 버튼 없음")
+        # 페이지 내 버튼 목록 출력
+        buttons = await page.evaluate("() => Array.from(document.querySelectorAll('button')).map(b => b.textContent.trim().substring(0,20) + '|' + b.className.substring(0,20))")
+        print(f"[write] 버튼 목록: {buttons}")
 
     # 발행 확인 팝업 처리
     try:
