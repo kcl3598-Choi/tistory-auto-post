@@ -251,9 +251,22 @@ async def main():
         await context.add_init_script(
             "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
         )
+
+        # 쿠키 주입으로 로그인 대체
+        cookies = [
+            {"name": "TSAL", "value": os.environ["TISTORY_TSAL"], "domain": ".tistory.com", "path": "/"},
+            {"name": "TOP-XSRF-TOKEN", "value": os.environ["TISTORY_XSRF_TOKEN"], "domain": ".tistory.com", "path": "/"},
+            {"name": "TSESSION", "value": os.environ["TISTORY_SESSION"], "domain": ".tistory.com", "path": "/"},
+        ]
+        await context.add_cookies(cookies)
+        print("쿠키 주입 완료")
+
         page = await context.new_page()
 
-        await login(page)
+        # 로그인 확인
+        await page.goto("https://www.tistory.com", wait_until="domcontentloaded")
+        await page.wait_for_timeout(2000)
+        print(f"홈 URL: {page.url} | title: {await page.title()}")
 
         for entry in new_entries:
             link = entry.get("link", "")

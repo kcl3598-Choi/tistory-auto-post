@@ -28,8 +28,9 @@ jobs:
 
       - name: 자동 포스팅 실행
         env:
-          TISTORY_EMAIL: ${{ secrets.TISTORY_EMAIL }}
-          TISTORY_PASSWORD: ${{ secrets.TISTORY_PASSWORD }}
+          TISTORY_TSAL: ${{ secrets.TISTORY_TSAL }}
+          TISTORY_XSRF_TOKEN: ${{ secrets.TISTORY_XSRF_TOKEN }}
+          TISTORY_SESSION: ${{ secrets.TISTORY_SESSION }}
         run: python post_to_tistory.py
 
       - name: published.json 커밋
