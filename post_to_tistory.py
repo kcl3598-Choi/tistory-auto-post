@@ -224,12 +224,29 @@ async def set_editor_content(page, html_content):
 
 async def write_post(page, title, html_content):
     await page.goto(WRITE_URL, wait_until="networkidle", timeout=30000)
-    await page.wait_for_timeout(3000)
+    await page.wait_for_timeout(5000)
     print(f"[write] URL: {page.url} | title: {await page.title()}")
+
+    # 에디터 로드 대기 (최대 10초)
+    for sel in [".ProseMirror", "[contenteditable='true']", ".editor-content", "#ckeditor", ".CodeMirror", "iframe.editor"]:
+        try:
+            await page.wait_for_selector(sel, timeout=3000)
+            print(f"[write] 에디터 발견: {sel}")
+            break
+        except Exception:
+            continue
 
     # iframe 확인
     frames = page.frames
-    print(f"[write] frames: {[f.url for f in frames]}")
+    print(f"[write] frames({len(frames)}): {[f.url[:60] for f in frames]}")
+
+    # 페이지 내 모든 요소 디버그
+    page_info = await page.evaluate("""() => ({
+        iframes: Array.from(document.querySelectorAll('iframe')).map(f => f.src || f.id),
+        textareas: Array.from(document.querySelectorAll('textarea')).map(t => t.id || t.className),
+        contenteditable: Array.from(document.querySelectorAll('[contenteditable]')).map(e => e.tagName + '#' + e.id + '.' + e.className.substring(0,30)),
+    })""")
+    print(f"[write] 페이지 요소: {page_info}")
 
     # 제목 입력
     for sel in ["input#post-title-inp", "input.title", "input[placeholder*='제목']", ".title-area input"]:
