@@ -240,13 +240,10 @@ async def write_post(page, title, html_content):
     frames = page.frames
     print(f"[write] frames({len(frames)}): {[f.url[:60] for f in frames]}")
 
-    # 페이지 내 모든 요소 디버그
-    page_info = await page.evaluate("""() => ({
-        iframes: Array.from(document.querySelectorAll('iframe')).map(f => f.src || f.id),
-        textareas: Array.from(document.querySelectorAll('textarea')).map(t => t.id || t.className),
-        contenteditable: Array.from(document.querySelectorAll('[contenteditable]')).map(e => e.tagName + '#' + e.id + '.' + e.className.substring(0,30)),
-    })""")
-    print(f"[write] 페이지 요소: {page_info}")
+    # 페이지 HTML 확인
+    html = await page.content()
+    print(f"[write] HTML 길이: {len(html)}")
+    print(f"[write] HTML 앞부분: {html[:300]}")
 
     # 제목 입력
     title_filled = False
