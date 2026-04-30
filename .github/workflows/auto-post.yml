@@ -31,6 +31,7 @@ jobs:
           TISTORY_TSAL: ${{ secrets.TISTORY_TSAL }}
           TISTORY_XSRF_TOKEN: ${{ secrets.TISTORY_XSRF_TOKEN }}
           TISTORY_SESSION: ${{ secrets.TISTORY_SESSION }}
+          TISTORY_TSSESSION: ${{ secrets.TISTORY_TSSESSION }}
         run: python post_to_tistory.py
 
       - name: published.json 커밋

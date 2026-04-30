@@ -309,15 +309,16 @@ async def main():
         await context.grant_permissions(["clipboard-read", "clipboard-write"])
 
         # 쿠키 주입으로 로그인 대체
-        cookie_val = [
-            ("TSAL", os.environ["TISTORY_TSAL"]),
-            ("TOP-XSRF-TOKEN", os.environ["TISTORY_XSRF_TOKEN"]),
-            ("TSESSION", os.environ["TISTORY_SESSION"]),
+        cookies = [
+            # www.tistory.com 쿠키
+            {"name": "TSAL",            "value": os.environ["TISTORY_TSAL"],       "domain": ".tistory.com", "path": "/"},
+            {"name": "TOP-XSRF-TOKEN",  "value": os.environ["TISTORY_XSRF_TOKEN"], "domain": ".tistory.com", "path": "/"},
+            {"name": "TSESSION",        "value": os.environ["TISTORY_SESSION"],    "domain": "www.tistory.com", "path": "/"},
+            # 블로그 서브도메인 쿠키
+            {"name": "TSSESSION",       "value": os.environ["TISTORY_TSSESSION"],  "domain": f"{BLOG_NAME}.tistory.com", "path": "/"},
+            {"name": "TOP-XSRF-TOKEN",  "value": os.environ["TISTORY_XSRF_TOKEN"], "domain": f"{BLOG_NAME}.tistory.com", "path": "/"},
+            {"name": "TSAL",            "value": os.environ["TISTORY_TSAL"],       "domain": f"{BLOG_NAME}.tistory.com", "path": "/"},
         ]
-        cookies = []
-        for name, value in cookie_val:
-            for domain in [".tistory.com", "www.tistory.com", f"{BLOG_NAME}.tistory.com"]:
-                cookies.append({"name": name, "value": value, "domain": domain, "path": "/"})
         await context.add_cookies(cookies)
         print("쿠키 주입 완료")
 
