@@ -126,7 +126,7 @@ async def login(page):
 async def set_editor_content(page, html_content):
     await page.wait_for_timeout(2000)
 
-    # 디버그: 에디터 요소 파악
+    # 디버그: 에디터 요소 파악 (메인 프레임 + iframe 포함)
     editors_info = await page.evaluate("""() => {
         const els = document.querySelectorAll('[contenteditable]');
         return Array.from(els).map(el => ({
@@ -136,7 +136,22 @@ async def set_editor_content(page, html_content):
             ce: el.contentEditable
         }));
     }""")
-    print(f"[DEBUG] contenteditable 요소: {editors_info}")
+    print(f"[DEBUG] contenteditable 요소(메인): {editors_info}")
+
+    # iframe 내부 확인
+    for frame in page.frames[1:]:
+        try:
+            frame_editors = await frame.evaluate("""() => {
+                const els = document.querySelectorAll('[contenteditable]');
+                return Array.from(els).map(el => ({
+                    tag: el.tagName, id: el.id,
+                    cls: el.className.substring(0, 60)
+                }));
+            }""")
+            if frame_editors:
+                print(f"[DEBUG] iframe({frame.url[:50]}) contenteditable: {frame_editors}")
+        except Exception:
+            pass
 
     # 방법 1: HTML 모드 버튼 클릭 후 textarea 입력
     for sel in ["button:has-text('HTML')", "[data-mode='html']", ".btn-mode-html", "button[title='HTML']"]:
@@ -208,8 +223,13 @@ async def set_editor_content(page, html_content):
 
 
 async def write_post(page, title, html_content):
-    await page.goto(WRITE_URL, wait_until="domcontentloaded")
+    await page.goto(WRITE_URL, wait_until="networkidle", timeout=30000)
     await page.wait_for_timeout(3000)
+    print(f"[write] URL: {page.url} | title: {await page.title()}")
+
+    # iframe 확인
+    frames = page.frames
+    print(f"[write] frames: {[f.url for f in frames]}")
 
     # 제목 입력
     for sel in ["input#post-title-inp", "input.title", "input[placeholder*='제목']", ".title-area input"]:
