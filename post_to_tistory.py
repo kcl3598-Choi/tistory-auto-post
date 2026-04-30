@@ -124,6 +124,20 @@ async def login(page):
 
 
 async def set_editor_content(page, html_content):
+    await page.wait_for_timeout(2000)
+
+    # 디버그: 에디터 요소 파악
+    editors_info = await page.evaluate("""() => {
+        const els = document.querySelectorAll('[contenteditable]');
+        return Array.from(els).map(el => ({
+            tag: el.tagName,
+            id: el.id,
+            cls: el.className.substring(0, 60),
+            ce: el.contentEditable
+        }));
+    }""")
+    print(f"[DEBUG] contenteditable 요소: {editors_info}")
+
     # 방법 1: HTML 모드 버튼 클릭 후 textarea 입력
     for sel in ["button:has-text('HTML')", "[data-mode='html']", ".btn-mode-html", "button[title='HTML']"]:
         try:
@@ -142,7 +156,28 @@ async def set_editor_content(page, html_content):
         except Exception:
             continue
 
-    # 방법 2: JavaScript로 에디터에 직접 주입 + 이벤트 트리거
+    # 방법 2: 클립보드 붙여넣기
+    try:
+        await page.evaluate("""(html) => {
+            const blob = new Blob([html], {type: 'text/html'});
+            return navigator.clipboard.write([new ClipboardItem({'text/html': blob})]);
+        }""", html_content)
+        for sel in [".ProseMirror", "[contenteditable='true']", ".editor-content"]:
+            try:
+                el = page.locator(sel).first
+                if await el.is_visible(timeout=2000):
+                    await el.click()
+                    await page.keyboard.press("Control+a")
+                    await page.keyboard.press("Control+v")
+                    await page.wait_for_timeout(500)
+                    print(f"[OK] 클립보드 붙여넣기 ({sel})")
+                    return
+            except Exception:
+                continue
+    except Exception as e:
+        print(f"[DEBUG] 클립보드 실패: {e}")
+
+    # 방법 3: JavaScript 직접 주입
     method = await page.evaluate("""(content) => {
         const pm = document.querySelector('.ProseMirror');
         if (pm) {
@@ -251,6 +286,7 @@ async def main():
         await context.add_init_script(
             "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
         )
+        await context.grant_permissions(["clipboard-read", "clipboard-write"])
 
         # 쿠키 주입으로 로그인 대체
         cookies = [
