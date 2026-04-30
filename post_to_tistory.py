@@ -310,14 +310,10 @@ async def main():
 
         # 쿠키 주입으로 로그인 대체
         cookies = [
-            # www.tistory.com 쿠키
-            {"name": "TSAL",            "value": os.environ["TISTORY_TSAL"],       "domain": ".tistory.com", "path": "/"},
-            {"name": "TOP-XSRF-TOKEN",  "value": os.environ["TISTORY_XSRF_TOKEN"], "domain": ".tistory.com", "path": "/"},
-            {"name": "TSESSION",        "value": os.environ["TISTORY_SESSION"],    "domain": "www.tistory.com", "path": "/"},
-            # 블로그 서브도메인 쿠키
-            {"name": "TSSESSION",       "value": os.environ["TISTORY_TSSESSION"],  "domain": f"{BLOG_NAME}.tistory.com", "path": "/"},
-            {"name": "TOP-XSRF-TOKEN",  "value": os.environ["TISTORY_XSRF_TOKEN"], "domain": f"{BLOG_NAME}.tistory.com", "path": "/"},
-            {"name": "TSAL",            "value": os.environ["TISTORY_TSAL"],       "domain": f"{BLOG_NAME}.tistory.com", "path": "/"},
+            {"name": "TSAL",           "value": os.environ["TISTORY_TSAL"],       "domain": ".tistory.com", "path": "/", "secure": True},
+            {"name": "TOP-XSRF-TOKEN", "value": os.environ["TISTORY_XSRF_TOKEN"], "domain": ".tistory.com", "path": "/", "secure": True},
+            {"name": "TSESSION",       "value": os.environ["TISTORY_SESSION"],    "domain": ".tistory.com", "path": "/", "secure": True, "httpOnly": True},
+            {"name": "TSSESSION",      "value": os.environ["TISTORY_TSSESSION"],  "domain": ".tistory.com", "path": "/", "secure": True, "httpOnly": True},
         ]
         await context.add_cookies(cookies)
         print("쿠키 주입 완료")
