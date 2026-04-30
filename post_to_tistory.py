@@ -229,27 +229,34 @@ async def write_post(page, title, html_content):
     await page.wait_for_timeout(2000)
     print(f"[write] 관리 URL: {page.url}")
 
-    await page.goto(WRITE_URL, wait_until="networkidle", timeout=30000)
-    await page.wait_for_timeout(5000)
-    print(f"[write] URL: {page.url} | title: {await page.title()}")
-
-    # 에디터 로드 대기 (최대 10초)
-    for sel in [".ProseMirror", "[contenteditable='true']", ".editor-content", "#ckeditor", ".CodeMirror", "iframe.editor"]:
+    # 관리 페이지에서 글쓰기 버튼 클릭
+    write_navigated = False
+    for sel in [
+        "a:has-text('글쓰기')", "button:has-text('글쓰기')",
+        "a:has-text('새 글')", "a[href*='write']", "a[href*='newpost']",
+        ".btn-write", "#btn-write",
+    ]:
         try:
-            await page.wait_for_selector(sel, timeout=3000)
-            print(f"[write] 에디터 발견: {sel}")
-            break
+            el = page.locator(sel).first
+            if await el.is_visible(timeout=2000):
+                await el.click()
+                await page.wait_for_load_state("networkidle", timeout=15000)
+                write_navigated = True
+                print(f"[write] 글쓰기 버튼 클릭 ({sel}) → {page.url}")
+                break
         except Exception:
             continue
 
-    # iframe 확인
-    frames = page.frames
-    print(f"[write] frames({len(frames)}): {[f.url[:60] for f in frames]}")
+    if not write_navigated:
+        # 관리 페이지 버튼/링크 목록 출력
+        links = await page.evaluate("() => Array.from(document.querySelectorAll('a, button')).map(e => e.textContent.trim().substring(0,15) + '|' + (e.href||'').substring(0,40)).filter(s=>s.length>1)")
+        print(f"[write] 관리 페이지 링크/버튼: {links[:20]}")
 
-    # 페이지 HTML 확인
+    await page.wait_for_timeout(3000)
+    print(f"[write] URL: {page.url} | title: {await page.title()}")
+
     html = await page.content()
-    print(f"[write] HTML 길이: {len(html)}")
-    print(f"[write] HTML 앞부분: {html[:300]}")
+    print(f"[write] HTML 앞부분: {html[:200]}")
 
     # 제목 입력
     title_filled = False
