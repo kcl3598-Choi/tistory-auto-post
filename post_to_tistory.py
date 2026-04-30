@@ -223,6 +223,12 @@ async def set_editor_content(page, html_content):
 
 
 async def write_post(page, title, html_content):
+    # 관리 대시보드 먼저 방문 후 쓰기 페이지 이동
+    manage_url = f"https://{BLOG_NAME}.tistory.com/manage"
+    await page.goto(manage_url, wait_until="networkidle", timeout=30000)
+    await page.wait_for_timeout(2000)
+    print(f"[write] 관리 URL: {page.url}")
+
     await page.goto(WRITE_URL, wait_until="networkidle", timeout=30000)
     await page.wait_for_timeout(5000)
     print(f"[write] URL: {page.url} | title: {await page.title()}")
