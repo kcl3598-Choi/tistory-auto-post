@@ -316,32 +316,47 @@ async def write_post(page, title, html_content):
     await set_editor_content(page, html_content)
     await page.wait_for_timeout(1000)
 
-    # 발행 버튼 클릭
-    publish_clicked = False
-    for sel in ["button:has-text('완료')", "button:has-text('발행')", ".btn-publish", "button.btn-posting-commit"]:
+    # 1단계: '완료' 버튼 클릭 → 발행 설정 패널 열기
+    completed_clicked = False
+    for sel in ["button:has-text('완료')", "button.btn-posting-commit"]:
         try:
             btn = page.locator(sel).first
-            if await btn.is_visible(timeout=2000):
+            if await btn.is_visible(timeout=3000):
                 await btn.click()
-                publish_clicked = True
-                print(f"[write] 발행 버튼 클릭 ({sel})")
+                completed_clicked = True
+                print(f"[write] 완료 버튼 클릭 ({sel})")
                 await page.wait_for_timeout(2000)
                 break
         except Exception:
             continue
-    if not publish_clicked:
-        print("[write] 발행 버튼 없음")
-        # 페이지 내 버튼 목록 출력
+    if not completed_clicked:
         buttons = await page.evaluate("() => Array.from(document.querySelectorAll('button')).map(b => b.textContent.trim().substring(0,20) + '|' + b.className.substring(0,20))")
-        print(f"[write] 버튼 목록: {buttons}")
+        print(f"[write] 완료 버튼 없음 - 버튼 목록: {buttons}")
 
-    # 발행 확인 팝업 처리
-    try:
-        confirm = page.locator(".layer-popup button:has-text('발행'), .modal button:has-text('확인'), .btn-confirm").first
-        if await confirm.is_visible(timeout=3000):
-            await confirm.click()
-    except Exception:
-        pass
+    # 2단계: 발행 설정 패널에서 '발행' 버튼 클릭 (공개 발행)
+    published = False
+    for sel in [
+        ".publish-layer button:has-text('발행')",
+        ".layer-publish button:has-text('발행')",
+        ".btn-publish-confirm",
+        "button.btn-publish",
+        ".setting-publish button:has-text('발행')",
+        "button:has-text('발행')",
+    ]:
+        try:
+            btn = page.locator(sel).first
+            if await btn.is_visible(timeout=3000):
+                await btn.click()
+                published = True
+                print(f"[write] 발행 확정 클릭 ({sel})")
+                await page.wait_for_timeout(2000)
+                break
+        except Exception:
+            continue
+
+    if not published:
+        buttons = await page.evaluate("() => Array.from(document.querySelectorAll('button')).map(b => b.textContent.trim().substring(0,20) + '|' + b.className.substring(0,20))")
+        print(f"[write] 발행 버튼 없음 - 버튼 목록: {buttons}")
 
     await page.wait_for_load_state("networkidle", timeout=15000)
     print(f"[OK] 발행: {title}")
