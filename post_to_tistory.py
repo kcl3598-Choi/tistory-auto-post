@@ -7,7 +7,7 @@ from playwright.async_api import async_playwright
 
 RSS_URL = "https://rss.blog.naver.com/kcl3598.xml"
 BLOG_NAME = "kcl3598"
-WRITE_URL = f"https://{BLOG_NAME}.tistory.com/manage/post/write"
+WRITE_URL = f"https://{BLOG_NAME}.tistory.com/manage/newpost/?type=post"
 PUBLISHED_FILE = "published.json"
 
 
@@ -126,32 +126,31 @@ async def login(page):
 async def set_editor_content(page, html_content):
     await page.wait_for_timeout(2000)
 
-    # 디버그: 에디터 요소 파악 (메인 프레임 + iframe 포함)
-    editors_info = await page.evaluate("""() => {
-        const els = document.querySelectorAll('[contenteditable]');
-        return Array.from(els).map(el => ({
-            tag: el.tagName,
-            id: el.id,
-            cls: el.className.substring(0, 60),
-            ce: el.contentEditable
-        }));
-    }""")
-    print(f"[DEBUG] contenteditable 요소(메인): {editors_info}")
+    # 방법 1: TinyMCE API 직접 호출
+    result = await page.evaluate("""(content) => {
+        if (window.tinymce && tinymce.activeEditor) {
+            tinymce.activeEditor.setContent(content);
+            return 'tinymce-api';
+        }
+        return null;
+    }""", html_content)
+    if result:
+        print(f"[OK] {result}")
+        return
 
-    # iframe 내부 확인
-    for frame in page.frames[1:]:
+    # 방법 2: TinyMCE iframe body에 직접 입력
+    for frame in page.frames:
         try:
-            frame_editors = await frame.evaluate("""() => {
-                const els = document.querySelectorAll('[contenteditable]');
-                return Array.from(els).map(el => ({
-                    tag: el.tagName, id: el.id,
-                    cls: el.className.substring(0, 60)
-                }));
-            }""")
-            if frame_editors:
-                print(f"[DEBUG] iframe({frame.url[:50]}) contenteditable: {frame_editors}")
+            body = await frame.query_selector("body#tinymce")
+            if body:
+                await frame.evaluate("""(content) => {
+                    document.body.innerHTML = content;
+                    document.body.dispatchEvent(new Event('input', {bubbles: true}));
+                }""", html_content)
+                print("[OK] TinyMCE iframe 직접 입력")
+                return
         except Exception:
-            pass
+            continue
 
     # 방법 1: HTML 모드 버튼 클릭 후 textarea 입력
     for sel in ["button:has-text('HTML')", "[data-mode='html']", ".btn-mode-html", "button[title='HTML']"]:
@@ -260,7 +259,7 @@ async def write_post(page, title, html_content):
 
     # 제목 입력
     title_filled = False
-    for sel in ["input#post-title-inp", "input.title", "input[placeholder*='제목']", ".title-area input"]:
+    for sel in ["input#post-title-inp", "input.title", "input[name='title']", "input#title", "input[placeholder*='제목']", ".title-area input"]:
         try:
             el = page.locator(sel).first
             if await el.is_visible(timeout=2000):
