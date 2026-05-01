@@ -259,10 +259,19 @@ async def write_post(page, title, html_content):
 
     # 제목 입력
     title_filled = False
-    for sel in ["input#post-title-inp", "input.title", "input[name='title']", "input#title", "input[placeholder*='제목']", ".title-area input"]:
+    for sel in [
+        "input#post-title-inp", "textarea#post-title-inp",
+        "input.title", "textarea.title",
+        "input[name='title']", "textarea[name='title']",
+        "input#title", "textarea#title",
+        "input[placeholder*='제목']", "textarea[placeholder*='제목']",
+        ".title-area input", ".title-area textarea",
+        ".editor-title input", ".editor-title textarea",
+        "[contenteditable='true'][data-role='title']",
+    ]:
         try:
             el = page.locator(sel).first
-            if await el.is_visible(timeout=2000):
+            if await el.is_visible(timeout=1500):
                 await el.click()
                 await el.fill(title)
                 title_filled = True
@@ -270,8 +279,36 @@ async def write_post(page, title, html_content):
                 break
         except Exception:
             continue
+
     if not title_filled:
-        print("[write] 제목 입력 실패")
+        # JS로 제목 입력 시도
+        result = await page.evaluate("""(t) => {
+            const candidates = [
+                document.querySelector('#post-title-inp'),
+                document.querySelector('input[name=title]'),
+                document.querySelector('textarea[name=title]'),
+                ...Array.from(document.querySelectorAll('input,textarea')).filter(e =>
+                    e.placeholder && e.placeholder.includes('제목')
+                ),
+            ].filter(Boolean);
+            for (const el of candidates) {
+                el.focus();
+                const nativeInput = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value') ||
+                                    Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value');
+                if (nativeInput) nativeInput.set.call(el, t);
+                el.dispatchEvent(new Event('input', {bubbles: true}));
+                el.dispatchEvent(new Event('change', {bubbles: true}));
+                return el.tagName + '#' + el.id + '.' + el.className.substring(0,20);
+            }
+            return null;
+        }""", title)
+        if result:
+            title_filled = True
+            print(f"[write] 제목 JS 입력 완료 ({result})")
+        else:
+            inputs = await page.evaluate("""() => Array.from(document.querySelectorAll('input,textarea')).map(e =>
+                e.tagName+'#'+e.id+'.'+e.className.substring(0,15)+'|ph='+e.placeholder.substring(0,20))""")
+            print(f"[write] 제목 입력 실패 - 페이지 inputs: {inputs[:10]}")
 
     await page.wait_for_timeout(1000)
 
