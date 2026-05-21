@@ -69,7 +69,7 @@ async def set_editor_content(page, html_content):
         except Exception:
             continue
 
-    # 방법 1: HTML 모드 버튼 클릭 후 textarea 입력
+    # 방법 3: HTML 모드 버튼 클릭 후 textarea 입력
     for sel in ["button:has-text('HTML')", "[data-mode='html']", ".btn-mode-html", "button[title='HTML']"]:
         try:
             btn = page.locator(sel).first
@@ -87,7 +87,7 @@ async def set_editor_content(page, html_content):
         except Exception:
             continue
 
-    # 방법 2: 클립보드 붙여넣기
+    # 방법 4: 클립보드 붙여넣기
     try:
         await page.evaluate("""(html) => {
             const blob = new Blob([html], {type: 'text/html'});
@@ -108,7 +108,7 @@ async def set_editor_content(page, html_content):
     except Exception as e:
         print(f"[DEBUG] 클립보드 실패: {e}")
 
-    # 방법 3: JavaScript 직접 주입
+    # 방법 5: JavaScript 직접 주입
     method = await page.evaluate("""(content) => {
         const pm = document.querySelector('.ProseMirror');
         if (pm) {
@@ -251,7 +251,7 @@ async def write_post(page, title, html_content):
         print(f"[write] 완료 버튼 없음 - 버튼 목록: {buttons}")
 
     # 2단계: 발행 설정 패널에서 '발행' 버튼 클릭 (공개 발행)
-    published = False
+    publish_clicked = False
     for sel in [
         ".publish-layer button:has-text('발행')",
         ".layer-publish button:has-text('발행')",
@@ -264,14 +264,14 @@ async def write_post(page, title, html_content):
             btn = page.locator(sel).first
             if await btn.is_visible(timeout=3000):
                 await btn.click()
-                published = True
+                publish_clicked = True
                 print(f"[write] 발행 확정 클릭 ({sel})")
                 await page.wait_for_timeout(2000)
                 break
         except Exception:
             continue
 
-    if not published:
+    if not publish_clicked:
         buttons = await page.evaluate("() => Array.from(document.querySelectorAll('button')).map(b => b.textContent.trim().substring(0,20) + '|' + b.className.substring(0,20))")
         print(f"[write] 발행 버튼 없음 - 버튼 목록: {buttons}")
 
