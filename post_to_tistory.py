@@ -14,13 +14,13 @@ PUBLISHED_FILE = "published.json"
 def load_published():
     if os.path.exists(PUBLISHED_FILE):
         with open(PUBLISHED_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return []
+            return set(json.load(f))
+    return set()
 
 
 def save_published(published):
     with open(PUBLISHED_FILE, "w", encoding="utf-8") as f:
-        json.dump(published, f, ensure_ascii=False, indent=2)
+        json.dump(sorted(published), f, ensure_ascii=False, indent=2)
 
 
 async def _click_submit(page):
@@ -427,7 +427,7 @@ async def main():
             )
             try:
                 await write_post(page, title, content)
-                published.append(link)
+                published.add(link)
             except Exception as e:
                 print(f"[ERROR] {title}: {e}")
 
