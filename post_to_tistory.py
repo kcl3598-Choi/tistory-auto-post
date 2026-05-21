@@ -248,7 +248,7 @@ async def write_post(page, title, html_content):
             continue
     if not completed_clicked:
         buttons = await page.evaluate("() => Array.from(document.querySelectorAll('button')).map(b => b.textContent.trim().substring(0,20) + '|' + b.className.substring(0,20))")
-        print(f"[write] 완료 버튼 없음 - 버튼 목록: {buttons}")
+        raise RuntimeError(f"'완료' 버튼을 찾지 못함 - 버튼 목록: {buttons}")
 
     # 2단계: 발행 설정 패널에서 '발행' 버튼 클릭 (공개 발행)
     publish_clicked = False
@@ -273,7 +273,7 @@ async def write_post(page, title, html_content):
 
     if not publish_clicked:
         buttons = await page.evaluate("() => Array.from(document.querySelectorAll('button')).map(b => b.textContent.trim().substring(0,20) + '|' + b.className.substring(0,20))")
-        print(f"[write] 발행 버튼 없음 - 버튼 목록: {buttons}")
+        raise RuntimeError(f"'발행' 버튼을 찾지 못함 - 버튼 목록: {buttons}")
 
     await page.wait_for_load_state("networkidle", timeout=15000)
     print(f"[OK] 발행: {title}")
@@ -285,6 +285,9 @@ async def main():
         raise SystemExit(f"필수 환경 변수 없음: {', '.join(missing)}")
 
     feed = feedparser.parse(RSS_URL)
+    if feed.get("bozo") and not feed.entries:
+        print(f"RSS 피드 파싱 오류: {feed.get('bozo_exception', '알 수 없음')}")
+        return
     if not feed.entries:
         print("RSS 피드 항목 없음")
         return
