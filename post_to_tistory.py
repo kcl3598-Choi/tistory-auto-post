@@ -10,7 +10,8 @@ BLOG_NAME = "kcl3598"
 PUBLISHED_FILE = "published.json"
 MAX_POSTS = int(os.environ.get("MAX_POSTS", "5"))
 FAILED_FILE = "failed.json"
-MAX_RETRIES = 3
+MAX_RETRIES = 3       # URL당 cross-run 최대 재시도 횟수
+MAX_POST_ATTEMPTS = 2  # 포스트별 단일 실행 내 즉시 재시도 횟수
 
 REQUIRED_ENV_VARS = ["TISTORY_TSAL", "TISTORY_XSRF_TOKEN", "TISTORY_SESSION", "TISTORY_TSSESSION"]
 
@@ -361,10 +362,16 @@ async def main():
 
         page = await context.new_page()
 
-        # 로그인 확인
+        # 로그인 확인 + 쿠키 만료 감지
         await page.goto("https://www.tistory.com", wait_until="domcontentloaded")
         await page.wait_for_timeout(2000)
         print(f"홈 URL: {page.url} | title: {await page.title()}")
+        if "login" in page.url or "auth" in page.url:
+            print("[COOKIE_EXPIRED] 세션 쿠키 만료 — GitHub Secrets 갱신 필요")
+            with open(".error_reason", "w") as f:
+                f.write("COOKIE_EXPIRED")
+            await browser.close()
+            sys.exit(2)  # exit 2 = 재시도 불가 오류
 
         errors = []
         for entry in new_entries:
@@ -376,16 +383,25 @@ async def main():
                 f"<br><br><hr>"
                 f'<p>원문: <a href="{link}" target="_blank">{link}</a></p>'
             )
-            try:
-                await write_post(page, title, content)
-                published.add(link)
-                failed.pop(link, None)
-                print(f"[성공] {title}")
-            except Exception as e:
+            last_error = None
+            for attempt in range(1, MAX_POST_ATTEMPTS + 1):
+                try:
+                    await write_post(page, title, content)
+                    published.add(link)
+                    failed.pop(link, None)
+                    print(f"[성공] {title}" + (f" (재시도 {attempt}회차)" if attempt > 1 else ""))
+                    last_error = None
+                    break
+                except Exception as e:
+                    last_error = e
+                    if attempt < MAX_POST_ATTEMPTS:
+                        print(f"[재시도] {title} ({attempt}/{MAX_POST_ATTEMPTS}): {e}")
+                        await page.wait_for_timeout(15000)
+            if last_error is not None:
                 failed[link] = failed.get(link, 0) + 1
                 attempts = failed[link]
-                errors.append((title, link, str(e), attempts))
-                print(f"[실패] {title} (시도 {attempts}/{MAX_RETRIES}): {e}")
+                errors.append((title, link, str(last_error), attempts))
+                print(f"[실패] {title} (시도 {attempts}/{MAX_RETRIES}): {last_error}")
 
         await browser.close()
 
