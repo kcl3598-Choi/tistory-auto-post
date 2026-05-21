@@ -2,12 +2,15 @@ import asyncio
 import feedparser
 import json
 import os
+import sys
 from playwright.async_api import async_playwright
 
 RSS_URL = "https://rss.blog.naver.com/kcl3598.xml"
 BLOG_NAME = "kcl3598"
 PUBLISHED_FILE = "published.json"
 MAX_POSTS = int(os.environ.get("MAX_POSTS", "5"))
+FAILED_FILE = "failed.json"
+MAX_RETRIES = 3
 
 REQUIRED_ENV_VARS = ["TISTORY_TSAL", "TISTORY_XSRF_TOKEN", "TISTORY_SESSION", "TISTORY_TSSESSION"]
 
@@ -22,6 +25,18 @@ def load_published():
 def save_published(published):
     with open(PUBLISHED_FILE, "w", encoding="utf-8") as f:
         json.dump(sorted(published), f, ensure_ascii=False, indent=2)
+
+
+def load_failed():
+    if os.path.exists(FAILED_FILE):
+        with open(FAILED_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}  # {url: 시도횟수}
+
+
+def save_failed(failed):
+    with open(FAILED_FILE, "w", encoding="utf-8") as f:
+        json.dump(failed, f, ensure_ascii=False, indent=2)
 
 
 async def _click_submit(page):
@@ -287,16 +302,27 @@ async def main():
     feed = feedparser.parse(RSS_URL)
     if feed.get("bozo") and not feed.entries:
         print(f"RSS 피드 파싱 오류: {feed.get('bozo_exception', '알 수 없음')}")
-        return
+        sys.exit(1)
     if not feed.entries:
         print("RSS 피드 항목 없음")
         return
 
     published = load_published()
-    new_entries = [e for e in reversed(feed.entries) if e.get("link", "") not in published][:MAX_POSTS]
+    failed = load_failed()
+
+    # MAX_RETRIES 초과한 URL은 건너뜀
+    new_entries = [
+        e for e in reversed(feed.entries)
+        if e.get("link", "") not in published
+        and failed.get(e.get("link", ""), 0) < MAX_RETRIES
+    ][:MAX_POSTS]
 
     if not new_entries:
-        print("새 글 없음")
+        skipped = sum(1 for e in feed.entries if failed.get(e.get("link", ""), 0) >= MAX_RETRIES)
+        if skipped:
+            print(f"새 글 없음 (재시도 한도 초과로 건너뜀: {skipped}건)")
+        else:
+            print("새 글 없음")
         return
 
     print(f"새 글 {len(new_entries)}개 발행 시작...")
@@ -340,6 +366,7 @@ async def main():
         await page.wait_for_timeout(2000)
         print(f"홈 URL: {page.url} | title: {await page.title()}")
 
+        errors = []
         for entry in new_entries:
             link = entry.get("link", "")
             title = entry.get("title", "제목 없음")
@@ -352,12 +379,32 @@ async def main():
             try:
                 await write_post(page, title, content)
                 published.add(link)
+                failed.pop(link, None)
+                print(f"[성공] {title}")
             except Exception as e:
-                print(f"[ERROR] {title}: {e}")
+                failed[link] = failed.get(link, 0) + 1
+                attempts = failed[link]
+                errors.append((title, link, str(e), attempts))
+                print(f"[실패] {title} (시도 {attempts}/{MAX_RETRIES}): {e}")
 
         await browser.close()
 
     save_published(published)
+    save_failed(failed)
+
+    if errors:
+        print(f"\n===== 발행 실패 요약 ({len(errors)}건) =====")
+        for title, link, err, attempts in errors:
+            if attempts >= MAX_RETRIES:
+                status = f"재시도 한도 초과 ({MAX_RETRIES}회) — 이후 건너뜀"
+            else:
+                status = f"다음 실행 시 재시도 ({attempts}/{MAX_RETRIES})"
+            print(f"  제목: {title}")
+            print(f"  링크: {link}")
+            print(f"  오류: {err}")
+            print(f"  상태: {status}")
+        sys.exit(1)
+
     print("완료")
 
 

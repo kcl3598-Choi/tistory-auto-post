@@ -49,11 +49,30 @@ jobs:
           MAX_POSTS: ${{ github.event.inputs.max_posts || '5' }}
         run: python post_to_tistory.py
 
-      - name: published.json 커밋
+      - name: 상태 파일 커밋
         if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add published.json
+          git add published.json failed.json 2>/dev/null || true
           git diff --staged --quiet || git commit -m "chore: update published posts [skip ci]"
           git push
+
+      - name: 실패 알림 요약
+        if: failure()
+        run: |
+          {
+            echo "## 자동 포스팅 실패"
+            echo ""
+            echo "| 항목 | 내용 |"
+            echo "|------|------|"
+            echo "| 실행 시각 | $(date '+%Y-%m-%d %H:%M UTC') |"
+            echo "| 실행 로그 | [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) |"
+            echo ""
+            if [ -f failed.json ] && [ "$(cat failed.json)" != "{}" ]; then
+              echo "### 재시도 대기 중인 포스트"
+              echo '```json'
+              cat failed.json
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
