@@ -9,6 +9,9 @@ RSS_URL = "https://rss.blog.naver.com/kcl3598.xml"
 BLOG_NAME = "kcl3598"
 WRITE_URL = f"https://{BLOG_NAME}.tistory.com/manage/newpost/?type=post"
 PUBLISHED_FILE = "published.json"
+MAX_POSTS = int(os.environ.get("MAX_POSTS", "5"))
+
+REQUIRED_ENV_VARS = ["TISTORY_TSAL", "TISTORY_XSRF_TOKEN", "TISTORY_SESSION", "TISTORY_TSSESSION"]
 
 
 def load_published():
@@ -363,13 +366,17 @@ async def write_post(page, title, html_content):
 
 
 async def main():
+    missing = [v for v in REQUIRED_ENV_VARS if not os.environ.get(v)]
+    if missing:
+        raise SystemExit(f"필수 환경 변수 없음: {', '.join(missing)}")
+
     feed = feedparser.parse(RSS_URL)
     if not feed.entries:
         print("RSS 피드 항목 없음")
         return
 
     published = load_published()
-    new_entries = [e for e in reversed(feed.entries) if e.get("link", "") not in published][:5]
+    new_entries = [e for e in reversed(feed.entries) if e.get("link", "") not in published][:MAX_POSTS]
 
     if not new_entries:
         print("새 글 없음")
