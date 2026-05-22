@@ -1,9 +1,21 @@
-name: Tistory 자동 포스팅 
+name: Tistory 자동 포스팅
 
 on:
   schedule:
-    - cron: '0 * * * *'   # 매시간 정각 (UTC 기준)
-  workflow_dispatch:        # 수동 실행 버튼
+    - cron: '0 * * * *'  # 매시간 정각 (UTC)
+  workflow_dispatch:
+    inputs:
+      max_posts:
+        description: '이번 실행에서 발행할 최대 글 수'
+        required: false
+        default: '5'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+concurrency:
+  group: auto-post
+  cancel-in-progress: false  # 실행 중인 작업은 취소하지 않고 대기
 
 jobs:
   post:
@@ -19,6 +31,7 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: '3.11'
+          cache: 'pip'
 
       - name: 의존성 설치
         run: pip install -r requirements.txt
@@ -27,14 +40,17 @@ jobs:
         run: playwright install chromium --with-deps
 
       - name: 자동 포스팅 실행
+        id: posting
         env:
           TISTORY_TSAL: ${{ secrets.TISTORY_TSAL }}
           TISTORY_XSRF_TOKEN: ${{ secrets.TISTORY_XSRF_TOKEN }}
           TISTORY_SESSION: ${{ secrets.TISTORY_SESSION }}
           TISTORY_TSSESSION: ${{ secrets.TISTORY_TSSESSION }}
+          MAX_POSTS: ${{ github.event.inputs.max_posts || '5' }}
         run: python post_to_tistory.py
 
       - name: published.json 커밋
+        if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
