@@ -3,6 +3,7 @@ import feedparser
 import json
 import os
 import sys
+import traceback
 from playwright.async_api import async_playwright
 
 RSS_URL = "https://rss.blog.naver.com/kcl3598.xml"
@@ -346,14 +347,20 @@ async def main():
             {"name": "TSSESSION",      "value": os.environ["TISTORY_TSSESSION"],  "domain": ".tistory.com", "path": "/", "secure": True, "httpOnly": True},
         ]
         await context.add_cookies(cookies)
-        print("쿠키 주입 완료")
+        print(f"쿠키 주입 완료: {[c['name'] for c in cookies]}")
 
         page = await context.new_page()
 
         await page.goto("https://www.tistory.com", wait_until="domcontentloaded")
         await page.wait_for_timeout(2000)
-        print(f"홈 URL: {page.url} | title: {await page.title()}")
-        if "login" in page.url or "auth" in page.url:
+        page_title = await page.title()
+        print(f"홈 URL: {page.url} | title: {page_title}")
+
+        # 브라우저에 실제 설정된 쿠키 확인
+        ctx_cookies = await context.cookies(["https://www.tistory.com"])
+        print(f"[DEBUG] 브라우저 쿠키: {[c['name'] for c in ctx_cookies]}")
+
+        if "login" in page.url or "auth" in page.url or "로그인" in page_title:
             print("[COOKIE_EXPIRED] 세션 쿠키 만료 — GitHub Secrets 갱신 필요")
             with open(".error_reason", "w") as f:
                 f.write("COOKIE_EXPIRED")
@@ -412,4 +419,10 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except SystemExit:
+        raise
+    except Exception:
+        traceback.print_exc()
+        sys.exit(1)
