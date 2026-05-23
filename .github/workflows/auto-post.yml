@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   post:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     permissions:
       contents: write
 
@@ -39,7 +39,7 @@ jobs:
       - name: Playwright Chromium 설치
         run: playwright install chromium --with-deps
 
-      - name: 자동 포스팅 실행
+      - name: 자동 포스팅 실행 (최대 3회 자동 재시도)
         id: posting
         env:
           TISTORY_TSAL: ${{ secrets.TISTORY_TSAL }}
@@ -47,13 +47,55 @@ jobs:
           TISTORY_SESSION: ${{ secrets.TISTORY_SESSION }}
           TISTORY_TSSESSION: ${{ secrets.TISTORY_TSSESSION }}
           MAX_POSTS: ${{ github.event.inputs.max_posts || '5' }}
-        run: python post_to_tistory.py
+        run: |
+          exit_code=0
+          for attempt in 1 2 3; do
+            echo "=== 실행 시도 $attempt/3 ==="
+            python post_to_tistory.py
+            exit_code=$?
+            [ $exit_code -eq 0 ] && break
+            [ $exit_code -eq 2 ] && {
+              echo "쿠키 만료 감지 — 재시도 없이 종료합니다"
+              break
+            }
+            [ $attempt -lt 3 ] && {
+              echo "오류 발생 (exit $exit_code) — 30초 후 재시도합니다..."
+              sleep 30
+            }
+          done
+          exit $exit_code
 
-      - name: published.json 커밋
+      - name: 상태 파일 커밋
         if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add published.json
+          git add published.json failed.json 2>/dev/null || true
           git diff --staged --quiet || git commit -m "chore: update published posts [skip ci]"
           git push
+
+      - name: 실패 알림 요약
+        if: failure()
+        run: |
+          {
+            echo "## 자동 포스팅 실패"
+            echo ""
+            echo "| 항목 | 내용 |"
+            echo "|------|------|"
+            echo "| 실행 시각 | $(date '+%Y-%m-%d %H:%M UTC') |"
+            echo "| 실행 로그 | [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) |"
+            echo ""
+            if [ -f .error_reason ] && grep -q "COOKIE_EXPIRED" .error_reason; then
+              echo "### 원인: 세션 쿠키 만료"
+              echo "GitHub repository → Settings → Secrets → Actions 에서 아래 4개 값을 갱신하세요."
+              echo "- \`TISTORY_TSAL\`"
+              echo "- \`TISTORY_XSRF_TOKEN\`"
+              echo "- \`TISTORY_SESSION\`"
+              echo "- \`TISTORY_TSSESSION\`"
+            elif [ -f failed.json ] && [ "$(cat failed.json)" != "{}" ]; then
+              echo "### 재시도 대기 중인 포스트 (failed.json)"
+              echo '```json'
+              cat failed.json
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

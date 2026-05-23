@@ -2,12 +2,16 @@ import asyncio
 import feedparser
 import json
 import os
+import sys
 from playwright.async_api import async_playwright
 
 RSS_URL = "https://rss.blog.naver.com/kcl3598.xml"
 BLOG_NAME = "kcl3598"
 PUBLISHED_FILE = "published.json"
 MAX_POSTS = int(os.environ.get("MAX_POSTS", "5"))
+FAILED_FILE = "failed.json"
+MAX_RETRIES = 3       # URL당 cross-run 최대 재시도 횟수
+MAX_POST_ATTEMPTS = 2  # 포스트별 단일 실행 내 즉시 재시도 횟수
 
 REQUIRED_ENV_VARS = ["TISTORY_TSAL", "TISTORY_XSRF_TOKEN", "TISTORY_SESSION", "TISTORY_TSSESSION"]
 
@@ -22,6 +26,18 @@ def load_published():
 def save_published(published):
     with open(PUBLISHED_FILE, "w", encoding="utf-8") as f:
         json.dump(sorted(published), f, ensure_ascii=False, indent=2)
+
+
+def load_failed():
+    if os.path.exists(FAILED_FILE):
+        with open(FAILED_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}  # {url: 시도횟수}
+
+
+def save_failed(failed):
+    with open(FAILED_FILE, "w", encoding="utf-8") as f:
+        json.dump(failed, f, ensure_ascii=False, indent=2)
 
 
 async def _click_submit(page):
@@ -248,7 +264,7 @@ async def write_post(page, title, html_content):
             continue
     if not completed_clicked:
         buttons = await page.evaluate("() => Array.from(document.querySelectorAll('button')).map(b => b.textContent.trim().substring(0,20) + '|' + b.className.substring(0,20))")
-        print(f"[write] 완료 버튼 없음 - 버튼 목록: {buttons}")
+        raise RuntimeError(f"'완료' 버튼을 찾지 못함 - 버튼 목록: {buttons}")
 
     # 2단계: 발행 설정 패널에서 '발행' 버튼 클릭 (공개 발행)
     publish_clicked = False
@@ -273,7 +289,7 @@ async def write_post(page, title, html_content):
 
     if not publish_clicked:
         buttons = await page.evaluate("() => Array.from(document.querySelectorAll('button')).map(b => b.textContent.trim().substring(0,20) + '|' + b.className.substring(0,20))")
-        print(f"[write] 발행 버튼 없음 - 버튼 목록: {buttons}")
+        raise RuntimeError(f"'발행' 버튼을 찾지 못함 - 버튼 목록: {buttons}")
 
     await page.wait_for_load_state("networkidle", timeout=15000)
     print(f"[OK] 발행: {title}")
@@ -285,15 +301,29 @@ async def main():
         raise SystemExit(f"필수 환경 변수 없음: {', '.join(missing)}")
 
     feed = feedparser.parse(RSS_URL)
+    if feed.get("bozo") and not feed.entries:
+        print(f"RSS 피드 파싱 오류: {feed.get('bozo_exception', '알 수 없음')}")
+        sys.exit(1)
     if not feed.entries:
         print("RSS 피드 항목 없음")
         return
 
     published = load_published()
-    new_entries = [e for e in reversed(feed.entries) if e.get("link", "") not in published][:MAX_POSTS]
+    failed = load_failed()
+
+    # MAX_RETRIES 초과한 URL은 건너뜀
+    new_entries = [
+        e for e in reversed(feed.entries)
+        if e.get("link", "") not in published
+        and failed.get(e.get("link", ""), 0) < MAX_RETRIES
+    ][:MAX_POSTS]
 
     if not new_entries:
-        print("새 글 없음")
+        skipped = sum(1 for e in feed.entries if failed.get(e.get("link", ""), 0) >= MAX_RETRIES)
+        if skipped:
+            print(f"새 글 없음 (재시도 한도 초과로 건너뜀: {skipped}건)")
+        else:
+            print("새 글 없음")
         return
 
     print(f"새 글 {len(new_entries)}개 발행 시작...")
@@ -332,11 +362,18 @@ async def main():
 
         page = await context.new_page()
 
-        # 로그인 확인
+        # 로그인 확인 + 쿠키 만료 감지
         await page.goto("https://www.tistory.com", wait_until="domcontentloaded")
         await page.wait_for_timeout(2000)
         print(f"홈 URL: {page.url} | title: {await page.title()}")
+        if "login" in page.url or "auth" in page.url:
+            print("[COOKIE_EXPIRED] 세션 쿠키 만료 — GitHub Secrets 갱신 필요")
+            with open(".error_reason", "w") as f:
+                f.write("COOKIE_EXPIRED")
+            await browser.close()
+            sys.exit(2)  # exit 2 = 재시도 불가 오류
 
+        errors = []
         for entry in new_entries:
             link = entry.get("link", "")
             title = entry.get("title", "제목 없음")
@@ -346,15 +383,44 @@ async def main():
                 f"<br><br><hr>"
                 f'<p>원문: <a href="{link}" target="_blank">{link}</a></p>'
             )
-            try:
-                await write_post(page, title, content)
-                published.add(link)
-            except Exception as e:
-                print(f"[ERROR] {title}: {e}")
+            last_error = None
+            for attempt in range(1, MAX_POST_ATTEMPTS + 1):
+                try:
+                    await write_post(page, title, content)
+                    published.add(link)
+                    failed.pop(link, None)
+                    print(f"[성공] {title}" + (f" (재시도 {attempt}회차)" if attempt > 1 else ""))
+                    last_error = None
+                    break
+                except Exception as e:
+                    last_error = e
+                    if attempt < MAX_POST_ATTEMPTS:
+                        print(f"[재시도] {title} ({attempt}/{MAX_POST_ATTEMPTS}): {e}")
+                        await page.wait_for_timeout(15000)
+            if last_error is not None:
+                failed[link] = failed.get(link, 0) + 1
+                attempts = failed[link]
+                errors.append((title, link, str(last_error), attempts))
+                print(f"[실패] {title} (시도 {attempts}/{MAX_RETRIES}): {last_error}")
 
         await browser.close()
 
     save_published(published)
+    save_failed(failed)
+
+    if errors:
+        print(f"\n===== 발행 실패 요약 ({len(errors)}건) =====")
+        for title, link, err, attempts in errors:
+            if attempts >= MAX_RETRIES:
+                status = f"재시도 한도 초과 ({MAX_RETRIES}회) — 이후 건너뜀"
+            else:
+                status = f"다음 실행 시 재시도 ({attempts}/{MAX_RETRIES})"
+            print(f"  제목: {title}")
+            print(f"  링크: {link}")
+            print(f"  오류: {err}")
+            print(f"  상태: {status}")
+        sys.exit(1)
+
     print("완료")
 
 
