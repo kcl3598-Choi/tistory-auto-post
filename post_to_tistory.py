@@ -161,6 +161,8 @@ async def write_post(page, title, html_content):
     await page.goto(manage_url, wait_until="networkidle", timeout=30000)
     await page.wait_for_timeout(2000)
     print(f"[write] 관리 URL: {page.url}")
+    if ("login" in page.url.lower() or "auth" in page.url.lower() or "kakao" in page.url.lower()):
+        raise RuntimeError(f"관리 페이지 접근 불가 — 쿠키 만료로 로그인 페이지 리다이렉트: {page.url}")
 
     write_navigated = False
     for sel in [
@@ -351,16 +353,17 @@ async def main():
 
         page = await context.new_page()
 
-        await page.goto("https://www.tistory.com", wait_until="domcontentloaded")
+        # 관리 페이지로 직접 이동해야 로그인 리다이렉트가 발생함 (홈은 미인증 상태도 정상 로딩)
+        await page.goto(f"https://{BLOG_NAME}.tistory.com/manage", wait_until="domcontentloaded", timeout=30000)
         await page.wait_for_timeout(2000)
         page_title = await page.title()
-        print(f"홈 URL: {page.url} | title: {page_title}")
+        print(f"관리 URL: {page.url} | title: {page_title}")
 
-        # 브라우저에 실제 설정된 쿠키 확인
-        ctx_cookies = await context.cookies(["https://www.tistory.com"])
+        ctx_cookies = await context.cookies([f"https://{BLOG_NAME}.tistory.com"])
         print(f"[DEBUG] 브라우저 쿠키: {[c['name'] for c in ctx_cookies]}")
 
-        if "login" in page.url or "auth" in page.url or "로그인" in page_title:
+        if ("login" in page.url.lower() or "auth" in page.url.lower()
+                or "kakao" in page.url.lower() or "로그인" in page_title):
             print("[COOKIE_EXPIRED] 세션 쿠키 만료 — GitHub Secrets 갱신 필요")
             with open(".error_reason", "w") as f:
                 f.write("COOKIE_EXPIRED")
