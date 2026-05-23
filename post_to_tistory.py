@@ -13,7 +13,8 @@ FAILED_FILE = "failed.json"
 MAX_RETRIES = 3       # URL당 cross-run 최대 재시도 횟수
 MAX_POST_ATTEMPTS = 2  # 포스트별 단일 실행 내 즉시 재시도 횟수
 
-REQUIRED_ENV_VARS = ["TISTORY_TSAL", "TISTORY_XSRF_TOKEN", "TISTORY_SESSION", "TISTORY_TSSESSION"]
+# TSAL, TSESSION은 Tistory에서 제거됨 — XSRF_TOKEN + TSSESSION만 사용
+REQUIRED_ENV_VARS = ["TISTORY_XSRF_TOKEN", "TISTORY_TSSESSION"]
 
 
 def load_published():
@@ -155,13 +156,11 @@ async def set_editor_content(page, html_content):
 
 
 async def write_post(page, title, html_content):
-    # 관리 대시보드 먼저 방문 후 쓰기 페이지 이동
     manage_url = f"https://{BLOG_NAME}.tistory.com/manage"
     await page.goto(manage_url, wait_until="networkidle", timeout=30000)
     await page.wait_for_timeout(2000)
     print(f"[write] 관리 URL: {page.url}")
 
-    # 관리 페이지에서 글쓰기 버튼 클릭
     write_navigated = False
     for sel in [
         "a:has-text('글쓰기')", "button:has-text('글쓰기')",
@@ -180,7 +179,6 @@ async def write_post(page, title, html_content):
             continue
 
     if not write_navigated:
-        # 관리 페이지 버튼/링크 목록 출력
         links = await page.evaluate("() => Array.from(document.querySelectorAll('a, button')).map(e => e.textContent.trim().substring(0,15) + '|' + (e.href||'').substring(0,40)).filter(s=>s.length>1)")
         print(f"[write] 관리 페이지 링크/버튼: {links[:20]}")
 
@@ -190,7 +188,6 @@ async def write_post(page, title, html_content):
     html = await page.content()
     print(f"[write] HTML 앞부분: {html[:200]}")
 
-    # 제목 입력
     title_filled = False
     for sel in [
         "input#post-title-inp", "textarea#post-title-inp",
@@ -214,7 +211,6 @@ async def write_post(page, title, html_content):
             continue
 
     if not title_filled:
-        # JS로 제목 입력 시도
         result = await page.evaluate("""(t) => {
             const candidates = [
                 document.querySelector('#post-title-inp'),
@@ -244,12 +240,9 @@ async def write_post(page, title, html_content):
             print(f"[write] 제목 입력 실패 - 페이지 inputs: {inputs[:10]}")
 
     await page.wait_for_timeout(1000)
-
-    # 본문 입력
     await set_editor_content(page, html_content)
     await page.wait_for_timeout(1000)
 
-    # 1단계: '완료' 버튼 클릭 → 발행 설정 패널 열기
     completed_clicked = False
     for sel in ["button:has-text('완료')", "button.btn-posting-commit"]:
         try:
@@ -266,7 +259,6 @@ async def write_post(page, title, html_content):
         buttons = await page.evaluate("() => Array.from(document.querySelectorAll('button')).map(b => b.textContent.trim().substring(0,20) + '|' + b.className.substring(0,20))")
         raise RuntimeError(f"'완료' 버튼을 찾지 못함 - 버튼 목록: {buttons}")
 
-    # 2단계: 발행 설정 패널에서 '발행' 버튼 클릭 (공개 발행)
     publish_clicked = False
     for sel in [
         ".publish-layer button:has-text('발행')",
@@ -311,7 +303,6 @@ async def main():
     published = load_published()
     failed = load_failed()
 
-    # MAX_RETRIES 초과한 URL은 건너뜀
     new_entries = [
         e for e in reversed(feed.entries)
         if e.get("link", "") not in published
@@ -350,11 +341,8 @@ async def main():
         )
         await context.grant_permissions(["clipboard-read", "clipboard-write"])
 
-        # 쿠키 주입으로 로그인 대체
         cookies = [
-            {"name": "TSAL",           "value": os.environ["TISTORY_TSAL"],       "domain": ".tistory.com", "path": "/", "secure": True},
             {"name": "TOP-XSRF-TOKEN", "value": os.environ["TISTORY_XSRF_TOKEN"], "domain": ".tistory.com", "path": "/", "secure": True},
-            {"name": "TSESSION",       "value": os.environ["TISTORY_SESSION"],    "domain": ".tistory.com", "path": "/", "secure": True, "httpOnly": True},
             {"name": "TSSESSION",      "value": os.environ["TISTORY_TSSESSION"],  "domain": ".tistory.com", "path": "/", "secure": True, "httpOnly": True},
         ]
         await context.add_cookies(cookies)
@@ -362,7 +350,6 @@ async def main():
 
         page = await context.new_page()
 
-        # 로그인 확인 + 쿠키 만료 감지
         await page.goto("https://www.tistory.com", wait_until="domcontentloaded")
         await page.wait_for_timeout(2000)
         print(f"홈 URL: {page.url} | title: {await page.title()}")
@@ -371,7 +358,7 @@ async def main():
             with open(".error_reason", "w") as f:
                 f.write("COOKIE_EXPIRED")
             await browser.close()
-            sys.exit(2)  # exit 2 = 재시도 불가 오류
+            sys.exit(2)
 
         errors = []
         for entry in new_entries:
