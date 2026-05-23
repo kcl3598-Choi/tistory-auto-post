@@ -156,40 +156,27 @@ async def set_editor_content(page, html_content):
     print("[WARN] 에디터 입력 실패 - 제목만 발행됩니다")
 
 
+async def screenshot_on_error(page, slug):
+    try:
+        path = f"/tmp/tistory-error-{slug}.png"
+        await page.screenshot(path=path, full_page=False)
+        print(f"[DEBUG] 스크린샷 저장: {path}")
+    except Exception as e:
+        print(f"[DEBUG] 스크린샷 실패: {e}")
+
+
 async def write_post(page, title, html_content):
-    manage_url = f"https://{BLOG_NAME}.tistory.com/manage"
-    await page.goto(manage_url, wait_until="networkidle", timeout=30000)
-    await page.wait_for_timeout(2000)
-    print(f"[write] 관리 URL: {page.url}")
-    if ("login" in page.url.lower() or "auth" in page.url.lower() or "kakao" in page.url.lower()):
-        raise RuntimeError(f"관리 페이지 접근 불가 — 쿠키 만료로 로그인 페이지 리다이렉트: {page.url}")
-
-    write_navigated = False
-    for sel in [
-        "a:has-text('글쓰기')", "button:has-text('글쓰기')",
-        "a:has-text('새 글')", "a[href*='write']", "a[href*='newpost']",
-        ".btn-write", "#btn-write",
-    ]:
-        try:
-            el = page.locator(sel).first
-            if await el.is_visible(timeout=2000):
-                await el.click()
-                await page.wait_for_load_state("networkidle", timeout=15000)
-                write_navigated = True
-                print(f"[write] 글쓰기 버튼 클릭 ({sel}) → {page.url}")
-                break
-        except Exception:
-            continue
-
-    if not write_navigated:
-        links = await page.evaluate("() => Array.from(document.querySelectorAll('a, button')).map(e => e.textContent.trim().substring(0,15) + '|' + (e.href||'').substring(0,40)).filter(s=>s.length>1)")
-        print(f"[write] 관리 페이지 링크/버튼: {links[:20]}")
-
+    # 새 글 작성 페이지로 직접 이동 (관리 페이지 → 버튼 클릭 단계 불필요)
+    write_url = f"https://{BLOG_NAME}.tistory.com/manage/newpost/"
+    await page.goto(write_url, wait_until="networkidle", timeout=30000)
     await page.wait_for_timeout(3000)
     print(f"[write] URL: {page.url} | title: {await page.title()}")
 
+    if ("login" in page.url.lower() or "auth" in page.url.lower() or "kakao" in page.url.lower()):
+        raise RuntimeError(f"글쓰기 페이지 접근 불가 (쿠키 만료): {page.url}")
+
     html = await page.content()
-    print(f"[write] HTML 앞부분: {html[:200]}")
+    print(f"[write] HTML 앞부분: {html[:300]}")
 
     title_filled = False
     for sel in [
@@ -391,6 +378,8 @@ async def main():
                     break
                 except Exception as e:
                     last_error = e
+                    slug = str(abs(hash(link)))[:8]
+                    await screenshot_on_error(page, f"{slug}-attempt{attempt}")
                     if attempt < MAX_POST_ATTEMPTS:
                         print(f"[재시도] {title} ({attempt}/{MAX_POST_ATTEMPTS}): {e}")
                         await page.wait_for_timeout(15000)

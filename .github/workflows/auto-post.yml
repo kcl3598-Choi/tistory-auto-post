@@ -73,6 +73,15 @@ jobs:
           git pull --rebase origin master
           git push
 
+      - name: 오류 스크린샷 업로드
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: error-screenshots-${{ github.run_id }}
+          path: /tmp/tistory-error-*.png
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: 실패 알림 요약
         if: failure()
         run: |
